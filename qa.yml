@@ -1,0 +1,10 @@
+name: QA
+on:
+  workflow_dispatch:
+
+jobs:
+  qa-test:
+    uses: ./.github/workflows/qa_checks.yml
+    with:
+      allow_to_fail: true
+    secrets: inherit

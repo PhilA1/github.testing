@@ -1,0 +1,140 @@
+---
+name: SLZQA
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        default: ''
+      base_dir:
+        type: string
+        default: '.'
+      runs-on:
+        type: string
+        default: 'ubuntu-latest'
+      terraform_version:
+        type: string
+        default: '1.5.3'
+      tflint_version:
+        type: string
+        default: 'latest'
+      allow_to_fail:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  tflint:
+    runs-on: ${{ inputs.runs-on }}
+    continue-on-error: ${{ inputs.allow_to_fail }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Cache Plugin Dir
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.terraform
+            ~/.tflint.d/plugins
+          key: ${{ runner.os }}-${{ hashFiles('main.tf') }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2.0.3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v2
+        with:
+          tflint_version: ${{ inputs.tflint_version }}
+
+      - name: TFLint
+        id: tflint
+        run: |
+          if [ -f ${GITHUB_WORKSPACE}/.tflint.hcl ] && [ ! -f .tflint.hcl ]; then
+            cp ${GITHUB_WORKSPACE}/.tflint.hcl .tflint.hcl
+          fi
+          tflint --init
+          tflint -f compact
+        working-directory: ${{ inputs.base_dir }}
+
+  tfunused:
+    runs-on: ${{ inputs.runs-on }}
+    continue-on-error: ${{ inputs.allow_to_fail }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: TFUnused
+        id: tfunused
+        run: |
+          curl -fsSL https://github.com/nvkv/tf-unused/releases/latest/download/tf-unused-linux.tar.gz -O
+          tar xvf tf-unused-linux.tar.gz
+          ./tf-unused-linux/tf-unused .
+        working-directory: ${{ inputs.base_dir }}
+
+  fmt:
+    runs-on: ${{ inputs.runs-on }}
+    continue-on-error: ${{ inputs.allow_to_fail }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -recursive
+        working-directory: ${{ inputs.base_dir }}
+
+  validate:
+    runs-on: ${{ inputs.runs-on }}
+    continue-on-error: ${{ inputs.allow_to_fail }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      #- uses: santandergroup-uk/slz-workflows/.github/actions/configure_git_token_credentials@v1
+      #  with:
+      #    secrets: ${{ toJSON(secrets) }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2.0.3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Terraform Init
+        run: terraform init -backend=false'
+        working-directory: ${{ inputs.base_dir }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ inputs.base_dir }}
+
+  tfsec:
+    runs-on: ${{ inputs.runs-on }}
+    continue-on-error: ${{ inputs.allow_to_fail }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: check config file
+        id: tfsec_args
+        run: |
+          if [ -f ./tfsec.yaml ]; then
+            echo ::set-output name=tfsec_arg::--config-file ./tfsec.yaml;
+          else
+            echo ::set-output name=tfsec_arg::;
+          fi
+        working-directory: ${{ inputs.base_dir }}
+
+      - name: tfsec
+        id: tfsec
+        uses: aquasecurity/tfsec-pr-commenter-action@v1.2.0
+        with:
+          tfsec_args: ${{ steps.tfsec_args.outputs.tfsec_arg }}
+          github_token: ${{ github.token }}
+          working_directory: ${{ inputs.base_dir }}
