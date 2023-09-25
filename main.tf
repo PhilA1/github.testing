@@ -11,6 +11,6 @@ output "random" {
   sensitive = true
 }
 
-output "code-version" {
+output "install-version" {
   value = var.slz_installation
 }
