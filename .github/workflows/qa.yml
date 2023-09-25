@@ -2,6 +2,10 @@ name: QA
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+  
 jobs:
   qa-test:
     uses: ./.github/workflows/qa_checks.yml
